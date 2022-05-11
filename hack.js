@@ -4,13 +4,57 @@
 */
 
 (() => {
+	// Google difficulted the things a lot here...
+
+	function findGlobal(func, obj=window) {
+    for (let [key, value] of Object.entries(obj)) {
+      if (!value) continue;
+      try {
+				const res = func(value, key);
+				if (res) return res;
+      } catch (exc) {}
+     };
+  }
+
+	const protName = findGlobal((x, key) => Object.values(x.prototype).map(x => x.toString().match(/.*0===a\.button.*this\.(\w+).*2===a\.button.*this\.(\w+).*1===a\.button.*this\.(\w+).*,(\w+)\(this.*/)).find(x=>x&&x.length>=2) ? key : undefined);
+  if (!protName) throw new Error('Prot name not found, signature scan isnt working anymore');
+
+	const [,leftVarName,rightVarName,middleVarName,inputFuncName] = findGlobal(x => {
+		const matches = x.toString().match(/.*0===a\.button.*this\.(\w+).*2===a\.button.*this\.(\w+).*1===a\.button.*this\.(\w+).*,(\w+)\(this.*/);
+		if (matches.find(x=>x&&x.length>=2)) return matches;
+  }, window[protName].prototype) || [];
+  const [,mapVarName,alreadyOpenedVarName] = findGlobal(x => {
+    const matches = x.toString().match(/(\w+)\[b\.x\]\[b\.y\]\.(\w+)\=!0;var/);
+    if (matches.find(x=>x&&x.length>=2)) return matches;
+  }) || [];
+  const [,bombVarName] = findGlobal(x => x.toString().match(/\[\w+\.x\]\[\w+\.y\]\.(\w+)\=!0,/)) || [];
+  const [,flagVarName] = findGlobal(x => x.toString().match(/\!\w+\.(\w+)\?"DETONATED_MINE"/)) || [];
+	const gameLoopFuncName = findGlobal((x, key) => {
+    const str = x.toString();
+    if (str.includes('this.startTime') && str.includes('this.canvas.height')) return key;
+  }, window[protName].prototype);
+  
+	console.log('protName', protName);
+	console.log('leftVarName', leftVarName);
+	console.log('rightVarName', rightVarName);
+	console.log('middleVarName', middleVarName);
+	console.log('inputFuncName', inputFuncName);
+  console.log('mapVarName', mapVarName);
+	console.log('alreadyOpenedVarName', alreadyOpenedVarName);
+	console.log('bombVarName', bombVarName);
+	console.log('flagVarName', flagVarName);
+  console.log('gameLoopFuncName', gameLoopFuncName);
+
+  if (!leftVarName || !rightVarName || !middleVarName || !inputFuncName || !mapVarName || !alreadyOpenedVarName || !bombVarName || !flagVarName || !gameLoopFuncName)
+    throw new Error('Variable not found, signature scan isnt working anymore');
+
   async function getGameInstance() {
     return new Promise(resolve => {
       // detour game loop function
-      const originalFunction = s_8D.prototype.xm;
-      s_8D.prototype.xm = function (a) {
+      const originalFunction = window[protName].prototype[gameLoopFuncName];
+      window[protName].prototype[gameLoopFuncName] = function (a) {
         resolve(this);
-        s_8D.prototype.xm = originalFunction;
+        window[protName].prototype[gameLoopFuncName] = originalFunction;
         return originalFunction.call(this, a);
       }
     });
@@ -27,35 +71,32 @@
   }
   
   function leftClick(instance, x, y) {
-    instance.Na = true;
-    instance.Tc = false;
-    instance.Ic = false;
+    instance[leftVarName] = true;
+    instance[rightVarName] = false;
+    instance[middleVarName] = false;
     const map = extractMap(instance);
     const {x: clickX, y: clickY} = posToClickPos(map, x, y);
-    s_Xwd(instance, clickX, clickY);
+    window[inputFuncName](instance, clickX, clickY);
   }
   
   function rightClick(instance, x, y) {
-    instance.Na = false;
-    instance.Tc = true;
-    instance.Ic = false;
+    instance[leftVarName] = false;
+    instance[rightVarName] = true;
+    instance[middleVarName] = false;
     const map = extractMap(instance);
     const {x: clickX, y: clickY} = posToClickPos(map, x, y);
-    s_Xwd(instance, clickX, clickY);
+    window[inputFuncName](instance, clickX, clickY);
   }
   
   function extractMap(instance) {
-    return instance.ka;
+    return instance[mapVarName];
   }
   
   function parseSquare(raw) {
     return {
-      alreadyOpened: raw.Br,
-      color: raw.color,
-      number: raw.kL,
-      bomb: raw.mK,
-      flag: raw.Rv,
-      framesSinceLastFlag: raw.DPa,
+      alreadyOpened: raw[alreadyOpenedVarName],
+      bomb: raw[bombVarName],
+      flag: raw[flagVarName],
     };
 	}
   
@@ -63,26 +104,7 @@
     return new Promise(resolve => setTimeout(resolve, ms));
   }
   
-  async function solve1() {
-    const instance = await getGameInstance();
-    let map = extractMap(instance);
-    for (let x in map) {
-      for (let y in map[x]) {
-        map = extractMap(instance);
-        const square = parseSquare(map[x][y]);
-        if (square.flag) continue;
-        if (square.alreadyOpened) continue;
-        if (square.bomb) {
-          rightClick(instance, x, y);
-        } else {
-          leftClick(instance, x, y);
-        }
-        await sleep(50);
-      }
-    }
-  }
-  
-  async function solve2() {
+  async function solve() {
     const instance = await getGameInstance();
     while(true) {
       const map = extractMap(instance);
@@ -97,6 +119,7 @@
       }).flatMap(x=>x).filter(x=>x);
       if (actions.length === 0) break;
       const {x,y,type} = actions[Math.floor(Math.random() * actions.length)];
+		console.log('type', type);
       if (type === 'right') {
         rightClick(instance, x, y);
       } else {
@@ -106,5 +129,6 @@
     }
   }
   
-  solve2();
+  solve();
 })()
+
