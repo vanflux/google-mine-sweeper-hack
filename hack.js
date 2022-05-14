@@ -30,6 +30,7 @@
   const [,bombVarName] = findGlobal(x => x.toString().match(/\[\w+\.x\]\[\w+\.y\]\.(\w+)\=!0,/)) || [];
   const [,flagVarName] = findGlobal(x => x.toString().match(/\!\w+\.(\w+)\?"DETONATED_MINE"/)) || [];
   const [,numVarName] = findGlobal(x => x.toString().match(/0===\w+\.\w+\[\w+\.x\]\[\w+\.y\]\.(\w+)/)) || [];
+	const [,genFuncName] = findGlobal(x => x.toString().match(/do\{(\w+)\(\w+\,\w+\)/)) || [];
   
 	const gameLoopFuncName = findGlobal((x, key) => {
     const str = x.toString();
@@ -47,8 +48,9 @@
 	console.log('flagVarName', flagVarName);
   console.log('numVarName', numVarName);
   console.log('gameLoopFuncName', gameLoopFuncName);
+  console.log('genFuncName', genFuncName);
 
-  if (!leftVarName || !rightVarName || !middleVarName || !inputFuncName || !mapVarName || !alreadyOpenedVarName || !bombVarName || !flagVarName || !gameLoopFuncName)
+  if (!leftVarName || !rightVarName || !middleVarName || !inputFuncName || !mapVarName || !alreadyOpenedVarName || !bombVarName || !flagVarName || !numVarName || !gameLoopFuncName || !genFuncName)
     throw new Error('Variable not found, signature scan isnt working anymore');
 
   async function getGameInstance() {
@@ -91,6 +93,10 @@
     const {x: clickX, y: clickY} = posToClickPos(map, x, y);
     window[inputFuncName](instance, clickX, clickY);
     instance[rightVarName] = false;
+  }
+  
+  function regenerateMap(instance, x, y) {
+		window[genFuncName](instance, x, y);
   }
   
   function extractMap(instance) {
@@ -203,7 +209,10 @@
     return bombs > 0;
   }
   
-  function isSolvable(map) {
+  function isSolvable(map, openX=undefined, openY=undefined) {
+    if (openX != undefined && openY != undefined) {
+      openSquares(map, openX, openY);
+    }
     for (let i = 0; i < 100; i++) {
       const actions = nextLegitActions(map);
       if (actions.length === 0) break;
@@ -223,12 +232,12 @@
     const elem = document.querySelector('g-dropdown-menu');
     const container = document.createElement('div');
     container.id = 'hack-box';
-    container.style = 'position: absolute; top: -30px; width: 500px; display: flex';
+    container.style = 'position: absolute; top: -30px; width: 700px; display: flex';
     elem.parentElement.insertBefore(container, elem);
     const instance = await getGameInstance();
     [
       {
-        name: 'Is Lucky Game?',
+        name: 'Lucky Game?',
         on: () => {
       		const rawMap = extractMap(instance);
           const map = rawMap.map(col => col.map(parseSquare));
@@ -237,6 +246,40 @@
           } else {
           	showMessage('Firstly, generate the game');
           }
+        },
+      },
+      {
+        name: 'Gen',
+        on: () => {
+          const start = Date.now();
+          let solvable = false;
+          const rawMap = extractMap(instance);
+          const width = rawMap.length;
+          const height = rawMap[0].length;
+          let x;
+          let y;
+          let gens = 0;
+          while (true) {
+            gens++;
+            x = Math.floor(Math.random() * width);
+            y = Math.floor(Math.random() * height);
+            regenerateMap(instance, x, y);
+            const rawMap = extractMap(instance);
+            const map = rawMap.map(col => col.map(parseSquare));
+            if (isSolvable(map, x, y)) {
+              solvable = true;
+          		leftClick(instance, x, y);
+              break;
+            }
+            if (gens % 10 === 0 && Date.now() - start > 1000) break;
+          } 
+          const end = Date.now();
+          const time = end - start;
+          if (solvable) {
+            showMessage('Generated, solvable :) ' + time + 'ms after ' + gens + ' gens');
+          } else {
+          	showMessage('Generated, lucky game ' + time + 'ms after ' + gens + ' gens');
+      		}
         },
       },
       {
@@ -302,10 +345,12 @@
     const label = document.createElement('div');
     label.style = 'margin-left: 10px; color: red';
     container.appendChild(label);
+    let showMessageId = 0;
     const showMessage = msg => {
+      const id = ++showMessageId;
       label.innerHTML = msg;
       setTimeout(x => {
-        if (label.innerHTML === msg) label.innerHTML = '';
+        if (id === showMessageId) label.innerHTML = '';
       }, 3000);
     }
   }
