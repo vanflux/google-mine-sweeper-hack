@@ -229,11 +229,34 @@
   
   async function run() {
     document.getElementById('hack-box')?.remove();
+    document.getElementById('hack-overlay')?.remove();
     const elem = document.querySelector('g-dropdown-menu');
+    const canvas = document.querySelector('canvas');
     const container = document.createElement('div');
     container.id = 'hack-box';
     container.style = 'position: absolute; top: -30px; width: 700px; display: flex';
     elem.parentElement.insertBefore(container, elem);
+    const offsetY = canvas.parentElement.getBoundingClientRect().height - canvas.getBoundingClientRect().height;
+    const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    overlay.id = 'hack-overlay';
+    overlay.style = 'pointer-events: none; position: absolute; width: 100%; height: 100%; top: ' + offsetY + 'px; left: 0px; right: 0px; bottom: 0px';
+    canvas.parentElement.insertBefore(overlay, canvas.nextSibling);
+    let lastXPos = 0;
+    let lastYPos = 0;
+    const trail = (map, x, y) => {
+    	document.getElementById('hack-overlay-line')?.remove();
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      const {x: xPos, y: yPos} = posToClickPos(map, x, y);
+      line.id = 'hack-overlay-line';
+      line.setAttribute('x1', lastXPos);
+      line.setAttribute('y1', lastYPos);
+      line.setAttribute('x2', xPos);
+      line.setAttribute('y2', yPos);
+      line.setAttribute('stroke', 'black');
+      overlay.appendChild(line);
+      lastXPos = xPos;
+      lastYPos = yPos;
+    }
     const instance = await getGameInstance();
     [
       {
@@ -297,10 +320,12 @@
           for (const {x, y, type} of nextHackActions(map)) {
             if (type === 'right') {
               rightClick(instance, x, y);
+              trail(map, x, y);
             } else {
               leftClick(instance, x, y);
+              trail(map, x, y);
             }
-            await sleep(10);
+            await sleep(50);
           }
         },
       },
@@ -317,21 +342,27 @@
             const rawMap = extractMap(instance);
             const map = rawMap.map(col => col.map(parseSquare));
             const actions = nextLegitActions(map);
-            if (actions.length === 0) {
-              if (!isSolved(map)) {
-                showMessage('There\'s no non guessable action');
+            if (actions.length < 5) {
+              if (isSolved(map)) {
+                break;
+              } else {
+                if (actions.length === 0) {
+                  showMessage('There\'s no non guessable action');
+                  break;
+                }
               }
-              break;
             }
             for (const {x, y, type} of actions) {
               if (type === 'right') {
                 rightClick(instance, x, y);
+                trail(map, x, y);
               } else {
                 leftClick(instance, x, y);
+                trail(map, x, y);
               }
-              await sleep(10);
+              await sleep(50);
             }
-            await sleep(10);
+            await sleep(50);
           }
         },
       },
