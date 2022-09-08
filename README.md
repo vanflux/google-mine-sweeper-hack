@@ -1,4 +1,4 @@
-# google-mine-sweeper-hack
+# google-mine-sweeper-hack (not working 08/09/22)
 
 A hack for google mine sweeper game
 
